@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+  "boards/marmot",
   "boards/nucleo",
   "boards/pico2w",
   "boards/pixracerpro",

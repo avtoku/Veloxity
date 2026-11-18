@@ -17,11 +17,15 @@ fn main() -> ExitCode {
             .and_then(|_| cargo(["test", "-p", "sim", "--lib"])),
         "check-board" => {
             let Some(board) = args.next() else {
-                eprintln!("missing board name: expected `nucleo`, `pixracerpro`, or `pico2w`");
+                eprintln!(
+                    "missing board name: expected `nucleo`, `pixracerpro`, `pico2w`, or `marmot`"
+                );
                 return ExitCode::from(2);
             };
             let Some(target) = board_target(&board) else {
-                eprintln!("unknown board `{board}`: expected `nucleo`, `pixracerpro`, or `pico2w`");
+                eprintln!(
+                    "unknown board `{board}`: expected `nucleo`, `pixracerpro`, `pico2w`, or `marmot`"
+                );
                 return ExitCode::from(2);
             };
             cargo([
@@ -36,11 +40,15 @@ fn main() -> ExitCode {
         }
         "build-board" => {
             let Some(board) = args.next() else {
-                eprintln!("missing board name: expected `nucleo`, `pixracerpro`, or `pico2w`");
+                eprintln!(
+                    "missing board name: expected `nucleo`, `pixracerpro`, `pico2w`, or `marmot`"
+                );
                 return ExitCode::from(2);
             };
             let Some(target) = board_target(&board) else {
-                eprintln!("unknown board `{board}`: expected `nucleo`, `pixracerpro`, or `pico2w`");
+                eprintln!(
+                    "unknown board `{board}`: expected `nucleo`, `pixracerpro`, `pico2w`, or `marmot`"
+                );
                 return ExitCode::from(2);
             };
             cargo([
@@ -55,11 +63,15 @@ fn main() -> ExitCode {
         }
         "flash-board" => {
             let Some(board) = args.next() else {
-                eprintln!("missing board name: expected `nucleo`, `pixracerpro`, or `pico2w`");
+                eprintln!(
+                    "missing board name: expected `nucleo`, `pixracerpro`, `pico2w`, or `marmot`"
+                );
                 return ExitCode::from(2);
             };
             let Some(target) = board_target(&board) else {
-                eprintln!("unknown board `{board}`: expected `nucleo`, `pixracerpro`, or `pico2w`");
+                eprintln!(
+                    "unknown board `{board}`: expected `nucleo`, `pixracerpro`, `pico2w`, or `marmot`"
+                );
                 return ExitCode::from(2);
             };
             let extra_args = args.collect::<Vec<_>>();
@@ -221,7 +233,7 @@ fn clean_generated() -> Result<(), u8> {
 fn board_target(board: &str) -> Option<&'static str> {
     match board {
         "nucleo" | "pixracerpro" => Some("thumbv7em-none-eabihf"),
-        "pico2w" => Some("thumbv8m.main-none-eabihf"),
+        "pico2w" | "marmot" => Some("thumbv8m.main-none-eabihf"),
         _ => None,
     }
 }
@@ -290,8 +302,8 @@ fn print_usage() {
          commands:\n\
            check-host       check host-compatible workspace packages\n\
            test-host        run host-side Rust tests\n\
-           check-board      check embedded firmware: nucleo | pixracerpro | pico2w\n\
-           build-board      build embedded firmware: nucleo | pixracerpro | pico2w\n\
+           check-board      check embedded firmware: nucleo | pixracerpro | pico2w | marmot\n\
+           build-board      build embedded firmware: nucleo | pixracerpro | pico2w | marmot\n\
            flash-board      build and flash embedded firmware with probe-rs\n\
                             Pixracer Pro: release UART by default; opt in with\n\
                             --vcp, --scope-timing-pins, --sensor-poll-diagnostics,\n\
