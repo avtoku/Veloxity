@@ -1,7 +1,7 @@
 # Marmot (RP2354B) Implementation Plan
 
 ## Goals & Constraints
-- Implement Veloxity firmware for the revised **Marmot (RP2354B)** board using **Option B**:
+- Implement Veloxity firmware for the revised **Marmot (RP2354B)** board to minimize changes to existing codebase
   - All new board, bus, sensor, QSPI parameter storage, PWM, and communication code is contained inside `boards/marmot/`.
   - Only root `Cargo.toml` (adding `"boards/marmot"` to `workspace.members`) and `xtask/src/main.rs` (adding `"marmot"` board target `thumbv8m.main-none-eabihf`) are modified outside `boards/marmot/`.
   - `veloxity_core`, `veloxity_mavlink`, and `platforms/rp2350` remain unmodified (`platforms/rp2350` enables `embassy-rp/rp235xa`, whereas `boards/marmot` enables `embassy-rp/rp235xb`).
