@@ -38,8 +38,8 @@
 | | `PPS` | 38 | `PIN_30` | Input (rising edge) | 1 Hz timepulse timestamp capture |
 | **TELEM (MAVLink)** | `TX` | 27 | `PIN_26` | `UART1` TX | `DMA_CH6` (TX), `DMA_CH7` (RX), `UART1_IRQ` |
 | | `RX` | 28 | `PIN_27` | `UART1` RX | 921600 baud (configurable) |
-| **RC (`S.Bus`)** | `TX` | 16 | `PIN_16` | Reserved (`PIO1` TX TBD) | |
-| | `RX` | 17 | `PIN_17` | `PIO1_SM0` (`PioSbusRx`) | Inverted `8E2` @ 100 kbaud (`PIO1` `GPIOBASE=0`) |
+| **RC (`ELRS / CRSF`)** | `TX` | 16 | `PIN_16` | `PIO1_SM1` (`PioElrsTx`) | `DMA_CH9`, 8N1 @ 420 kbaud (`CRSF` telemetry) |
+| | `RX` | 17 | `PIN_17` | `PIO1_SM0` (`PioElrsRx`) | `DMA_CH8`, 8N1 @ 420 kbaud (`PIO1` `GPIOBASE=0`, `sbus.rs` kept unused) |
 | **EXT I2C** | `SCL` | 14 | `PIN_15` | `I2C1` SCL | Initialized/reserved for external I2C |
 | | `SDA` | 18 | `PIN_18` | `I2C1` SDA | |
 | **Battery Monitor** | `V BAT` | 57 | `PIN_46` | `ADC` Ch6 | Polled 10 Hz via `embassy_rp::adc` |
@@ -63,7 +63,7 @@
 | | `TP 6` | 42 | `PIN_33` | Output | `BoardIo::set_test_pin_3` |
 
 ### Note on `PIO0` Upper GPIO Window (`GPIOBASE = 16`)
-`PIO0` controls `Flash` (`PIN_20`..`PIN_24`), `Pitot` (`PIN_36`, `PIN_38`), and `Mag` (`PIN_42`, `PIN_43`). All of these pins lie in `PIN_16..=PIN_47`, so `PIO0` must use `GPIOBASE = 16` (`embassy-rp` RP2350B support) while `PIO1` (`PIN_17`) uses `GPIOBASE = 0`.
+`PIO0` controls `Flash` (`PIN_20`..`PIN_24`), `Pitot` (`PIN_36`, `PIN_38`), and `Mag` (`PIN_42`, `PIN_43`). All of these pins lie in `PIN_16..=PIN_47`, so `PIO0` must use `GPIOBASE = 16` (`embassy-rp` RP2350B support) while `PIO1` (`PIN_16`, `PIN_17`) uses `GPIOBASE = 0`.
 - **Workarounds for `embassy-rp 0.10.0` PIO `set_config`**:
   1. `StateMachine::set_config` subtracts `shift` (`16` when `GPIOBASE = 16`) from `pinctrl` bases when any pin is `>= 32`, but writes `config.exec.jmp_pin` unshifted to the 5-bit `EXECCTRL.JMP_PIN` register field; `PioI2c::new` therefore subtracts `16` from `cfg.get_exec().jmp_pin` whenever `sda` or `scl` is `>= 32`.
   2. `StateMachine::set_config` writes `PIO::PIO.gpiobase` based solely on that SM's pins, so `Flash` (`PIN_20..=24`, all `< 32`) would reset `PIO0.gpiobase = false` (`shift = 0`) and be broken when `Mag`/`Pitot` set `PIO0.gpiobase = true` (`shift = 16`); `PioQspi::new` therefore forces `PIO0.gpiobase = true` and shifts `Flash`'s `pinctrl` `in_base`/`out_base`/`sideset_base` by `- 16` before `sm.set_pins` / `sm.set_pin_dirs`.
@@ -80,7 +80,7 @@
     - `Service`: drains service sensor queues (baro, mag, pitot, gnss, battery, rc), processes MAVLink RX/TX via `SharedMavlinkMailbox`, and runs budgeted telemetry.
 - **Core 1 (Async Embassy Executors)**:
   - `CORE1_IMU_EXECUTOR` (`InterruptExecutor` on `SIO_IRQ_BELL` at `Priority::P1`): runs `lsm6dsk320xtr::task` pushing `ImuPacket<f32>` into `SHARED_IMU_QUEUE`.
-  - `CORE1_EXECUTOR` (thread-mode `Executor`): runs `uart_tx_task`, `uart_rx_task`, `qspi_storage::task`, `bmp581::task`, `mmc5983ma::task`, `dlhr::task`, `ubx::pps_task`, `ubx::task`, `sbus::task`, and `battery::task`.
+  - `CORE1_EXECUTOR` (thread-mode `Executor`): runs `uart_tx_task`, `uart_rx_task`, `qspi_storage::task`, `bmp581::task`, `mmc5983ma::task`, `dlhr::task`, `ubx::pps_task`, `ubx::task`, `elrs::rx_task`, `elrs::tx_task`, and `battery::task` (`sbus.rs` kept unused).
 
 ---
 
@@ -102,7 +102,8 @@
 - [x] `boards/marmot/src/sensors/bmp581.rs`
 - [x] `boards/marmot/src/sensors/mmc5983ma.rs`
 - [x] `boards/marmot/src/sensors/dlhr.rs`
-- [x] `boards/marmot/src/sensors/sbus.rs`
+- [x] `boards/marmot/src/sensors/elrs.rs`
+- [x] `boards/marmot/src/sensors/sbus.rs` (kept unused)
 - [x] `boards/marmot/src/sensors/ubx.rs`
 - [x] `boards/marmot/src/sensors/battery.rs`
 - [x] `boards/marmot/src/board.rs`

@@ -1,6 +1,7 @@
 pub mod battery;
 pub mod bmp581;
 pub mod dlhr;
+pub mod elrs;
 pub mod lsm6dsk320xtr;
 pub mod mmc5983ma;
 pub mod sbus;

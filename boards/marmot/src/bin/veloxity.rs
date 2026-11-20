@@ -15,10 +15,11 @@ use embassy_rp::i2c::{self, Config as I2cConfig, I2c};
 use embassy_rp::interrupt::{self, InterruptExt, Priority};
 use embassy_rp::multicore::{Stack, spawn_core1};
 use embassy_rp::peripherals::{
-    ADC, CORE1, DMA_CH0, DMA_CH1, DMA_CH2, DMA_CH3, DMA_CH4, DMA_CH5, DMA_CH6, DMA_CH7, I2C0,
-    I2C1, PIN_15, PIN_17, PIN_18, PIN_19, PIN_20, PIN_21, PIN_22, PIN_23, PIN_24, PIN_26, PIN_27,
-    PIN_28, PIN_29, PIN_30, PIN_31, PIN_32, PIN_34, PIN_35, PIN_36, PIN_37, PIN_38, PIN_39,
-    PIN_40, PIN_41, PIN_42, PIN_43, PIN_44, PIN_45, PIN_46, PIN_47, PIO0, PIO1, SPI0, UART0, UART1,
+    ADC, CORE1, DMA_CH0, DMA_CH1, DMA_CH2, DMA_CH3, DMA_CH4, DMA_CH5, DMA_CH6, DMA_CH7, DMA_CH8,
+    DMA_CH9, I2C0, I2C1, PIN_15, PIN_16, PIN_17, PIN_18, PIN_19, PIN_20, PIN_21, PIN_22, PIN_23,
+    PIN_24, PIN_26, PIN_27, PIN_28, PIN_29, PIN_30, PIN_31, PIN_32, PIN_34, PIN_35, PIN_36, PIN_37,
+    PIN_38, PIN_39, PIN_40, PIN_41, PIN_42, PIN_43, PIN_44, PIN_45, PIN_46, PIN_47, PIO0, PIO1,
+    SPI0, UART0, UART1,
 };
 use embassy_rp::pio::{self, Pio};
 use embassy_rp::spi::{self, Config as SpiConfig, Spi};
@@ -34,8 +35,8 @@ use marmot::pio_i2c::{PioI2c, PioI2cProgram};
 use marmot::pio_qspi::{PioQspi, PioQspiProgram};
 use marmot::pwm::{MarmotPwmDriver, MarmotPwmPins};
 use marmot::qspi_storage;
-use marmot::sensors::sbus::{PioSbusRx, PioSbusRxProgram};
-use marmot::sensors::{battery, bmp581, dlhr, lsm6dsk320xtr, mmc5983ma, sbus, ubx};
+use marmot::sensors::elrs::{PioElrsRx, PioElrsRxProgram, PioElrsTx, PioElrsTxProgram};
+use marmot::sensors::{battery, bmp581, dlhr, elrs, lsm6dsk320xtr, mmc5983ma, ubx};
 use panic_halt as _;
 use static_cell::StaticCell;
 use veloxity_core::board::{BoardIo, SerialRxPriority};
@@ -92,7 +93,9 @@ bind_interrupts!(struct Irqs {
         dma::InterruptHandler<DMA_CH4>,
         dma::InterruptHandler<DMA_CH5>,
         dma::InterruptHandler<DMA_CH6>,
-        dma::InterruptHandler<DMA_CH7>;
+        dma::InterruptHandler<DMA_CH7>,
+        dma::InterruptHandler<DMA_CH8>,
+        dma::InterruptHandler<DMA_CH9>;
 });
 
 #[embassy_rp::interrupt]
@@ -183,10 +186,13 @@ struct Core1Resources {
     dma_ch5: Peri<'static, DMA_CH5>,
     dma_ch6: Peri<'static, DMA_CH6>,
     dma_ch7: Peri<'static, DMA_CH7>,
+    dma_ch8: Peri<'static, DMA_CH8>,
+    dma_ch9: Peri<'static, DMA_CH9>,
     // EXT I2C (I2C1)
     pin15: Peri<'static, PIN_15>,
     pin18: Peri<'static, PIN_18>,
-    // RC S.Bus RX
+    // RC ELRS/CRSF (TX/RX)
+    pin16: Peri<'static, PIN_16>,
     pin17: Peri<'static, PIN_17>,
     // QSPI Flash (W25Q128JVPIM)
     pin19: Peri<'static, PIN_19>,
@@ -318,15 +324,33 @@ fn spawn_core1_services(resources: Core1Resources, mailbox: SharedMavlinkMailbox
             );
             let pitot_drdy = Input::new(resources.pin45, Pull::None);
 
-            // PIO1: RC S.Bus RX (SM0)
+            // PIO1: RC ELRS/CRSF RX (SM0 + DMA_CH8) and TX (SM1 + DMA_CH9)
             let Pio {
                 common: mut pio1_common,
                 sm0: pio1_sm0,
+                sm1: pio1_sm1,
                 ..
             } = Pio::new(resources.pio1, Irqs);
-            let sbus_rx_prog = PioSbusRxProgram::new(&mut pio1_common);
-            let sbus_rx =
-                PioSbusRx::new(&mut pio1_common, pio1_sm0, resources.pin17, &sbus_rx_prog);
+            let pio_rx_prog = PioElrsRxProgram::new(&mut pio1_common);
+            let pio_tx_prog = PioElrsTxProgram::new(&mut pio1_common);
+            let rc_uart_rx = PioElrsRx::new(
+                elrs::CRSF_BAUD,
+                &mut pio1_common,
+                pio1_sm0,
+                resources.pin17,
+                resources.dma_ch8,
+                Irqs,
+                &pio_rx_prog,
+            );
+            let rc_uart_tx = PioElrsTx::new(
+                elrs::CRSF_BAUD,
+                &mut pio1_common,
+                pio1_sm1,
+                resources.pin16,
+                resources.dma_ch9,
+                Irqs,
+                &pio_tx_prog,
+            );
 
             // Baro (I2C0)
             let mut baro_i2c_cfg = I2cConfig::default();
@@ -400,7 +424,8 @@ fn spawn_core1_services(resources: Core1Resources, mailbox: SharedMavlinkMailbox
                 );
                 spawner.spawn(ubx::pps_task(gps_pps).expect("spawn PPS task"));
                 spawner.spawn(ubx::task(gps_uart).expect("spawn GNSS task"));
-                spawner.spawn(sbus::task(sbus_rx).expect("spawn SBUS task"));
+                spawner.spawn(elrs::rx_task(rc_uart_rx).expect("spawn ELRS RX task"));
+                spawner.spawn(elrs::tx_task(rc_uart_tx).expect("spawn ELRS TX task"));
                 spawner.spawn(battery::task(adc, vbat_ch, ibat_ch).expect("spawn battery task"));
                 mailbox.set_comms_state(22);
             })
@@ -482,8 +507,11 @@ fn main() -> ! {
             dma_ch5: p.DMA_CH5,
             dma_ch6: p.DMA_CH6,
             dma_ch7: p.DMA_CH7,
+            dma_ch8: p.DMA_CH8,
+            dma_ch9: p.DMA_CH9,
             pin15: p.PIN_15,
             pin18: p.PIN_18,
+            pin16: p.PIN_16,
             pin17: p.PIN_17,
             pin19: p.PIN_19,
             pin20: p.PIN_20,
